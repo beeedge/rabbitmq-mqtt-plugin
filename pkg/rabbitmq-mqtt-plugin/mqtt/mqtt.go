@@ -36,8 +36,6 @@ func MqttProcess(cfg *config.MqttConfig, messageChan <-chan model.RabbitMQMsg) {
 			topic := strings.ReplaceAll(msg.Topic, ".", "/")
 			bytes, _ := json.Marshal(msg)
 			token := client.Publish(topic, byte(cfg.Qos), false, bytes)
-			fmt.Println("mqtt send message:", msg)
-			fmt.Println("topic:", topic)
 			token.Wait()
 		case <-ticker.C:
 			// 5 minute detect connection
