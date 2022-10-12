@@ -30,15 +30,9 @@ func RabbitMQProcess(cfg *config.RabbitMQConfig, message chan<- model.RabbitMQMs
 	}
 	klog.Info("Connected to rabbitmq server")
 
-	// detect connection close goroutine
+	// goroutine detect connection close
 	closeChan := make(chan bool, 1)
-	go func(chan<- bool) {
-		cc := make(chan *amqp.Error)
-		err := <-channel.NotifyClose(cc)
-		klog.Errorf("Rabbitmq connection close: %s\n", err.Error())
-		closeChan <- true
-	}(closeChan)
-
+	go connectCloseNotice(channel, closeChan)
 	for {
 		select {
 		case msg := <-msgs:
@@ -53,13 +47,20 @@ func RabbitMQProcess(cfg *config.RabbitMQConfig, message chan<- model.RabbitMQMs
 			msgs, channel, err = connect(cfg)
 			if err != nil {
 				klog.Errorf("Connect again error: %s", err.Error())
-				closeChan <- true
 				klog.Info("Connect rabbitmq fail,sleep 5 minute")
 				time.Sleep(5 * time.Minute)
+				go connectCloseNotice(channel, closeChan)
 				continue
 			}
 		}
 	}
+}
+
+func connectCloseNotice(channel *amqp.Channel, closeChan chan<- bool) {
+	cc := make(chan *amqp.Error)
+	err := <-channel.NotifyClose(cc)
+	klog.Errorf("Rabbitmq connection close: %s\n", err.Error())
+	closeChan <- true
 }
 
 func connect(cfg *config.RabbitMQConfig) (<-chan amqp.Delivery, *amqp.Channel, error) {

@@ -19,8 +19,8 @@ package rabbitmqMqttPlugin
 import (
 	"github.com/beeedge/beethings/pkg/rabbitmq-mqtt-plugin/config"
 	"github.com/beeedge/beethings/pkg/rabbitmq-mqtt-plugin/model"
-	"github.com/beeedge/beethings/pkg/rabbitmq-mqtt-plugin/mqtt"
-	"github.com/beeedge/beethings/pkg/rabbitmq-mqtt-plugin/rabbitmq"
+	"github.com/beeedge/beethings/pkg/rabbitmq-mqtt-plugin/rabbitmq-mqtt-plugin/mqtt"
+	"github.com/beeedge/beethings/pkg/rabbitmq-mqtt-plugin/rabbitmq-mqtt-plugin/rabbitmq"
 	"k8s.io/klog"
 )
 
@@ -35,7 +35,7 @@ func NewRabbitmqMqttPlugin(cfg *config.Config) (*RabbitmqMqttPlugin, error) {
 func (rmp *RabbitmqMqttPlugin) Run(stopCh <-chan struct{}) {
 	klog.Info("Run rabbitmq mqtt plugin")
 	stopch := make(chan interface{})
-	messageChan := make(chan model.RabbitMQMsg)
+	messageChan := make(chan model.RabbitMQMsg, 10000)
 	// Handle rabbitmq message
 	go rabbitmq.RabbitMQProcess(rmp.config.RabbitMQ, messageChan)
 	// Send to mqtt broker
