@@ -18,8 +18,8 @@ import (
 */
 func RabbitMQProcess(cfg *config.RabbitMQConfig, message chan<- model.RabbitMQMsg) {
 	// Connect rabbitmq
-	msgs, channel, err := connect(cfg)
-	defer channel.Close()
+	msgs, conn, err := connect(cfg)
+	defer conn.Close()
 	if err != nil {
 		klog.Errorf("Failed to connect rabbitmq: %s\n", err.Error())
 		return
@@ -30,9 +30,7 @@ func RabbitMQProcess(cfg *config.RabbitMQConfig, message chan<- model.RabbitMQMs
 	}
 	klog.Info("Connected to rabbitmq server")
 
-	// goroutine detect connection close
-	closeChan := make(chan bool, 1)
-	go connectCloseNotice(channel, closeChan)
+	ticker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case msg := <-msgs:
@@ -42,37 +40,29 @@ func RabbitMQProcess(cfg *config.RabbitMQConfig, message chan<- model.RabbitMQMs
 				continue
 			}
 			message <- body
-		case <-closeChan:
-			// Connect again
-			msgs, channel, err = connect(cfg)
-			if err != nil {
-				klog.Errorf("Connect again error: %s", err.Error())
-				klog.Info("Connect rabbitmq fail,sleep 5 minute")
-				time.Sleep(5 * time.Minute)
-				go connectCloseNotice(channel, closeChan)
-				continue
+		case <-ticker.C:
+			if conn.IsClosed() {
+				// Connect again
+				msgs, conn, err = connect(cfg)
+				if err != nil {
+					klog.Errorf("Connect again error: %s", err.Error())
+					continue
+				}
 			}
 		}
 	}
 }
 
-func connectCloseNotice(channel *amqp.Channel, closeChan chan<- bool) {
-	cc := make(chan *amqp.Error)
-	err := <-channel.NotifyClose(cc)
-	klog.Errorf("Rabbitmq connection close: %s\n", err.Error())
-	closeChan <- true
-}
-
-func connect(cfg *config.RabbitMQConfig) (<-chan amqp.Delivery, *amqp.Channel, error) {
+func connect(cfg *config.RabbitMQConfig) (<-chan amqp.Delivery, *amqp.Connection, error) {
 	conn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s:%d/", cfg.Username, cfg.Password, cfg.Addr, cfg.Port))
 	if err != nil {
 		klog.Errorf("Failed to connect to rabbitmq: %s\n", err.Error())
-		return make(<-chan amqp.Delivery), &amqp.Channel{}, err
+		return make(<-chan amqp.Delivery), &amqp.Connection{}, err
 	}
 	channel, err := conn.Channel()
 	if err != nil {
 		klog.Errorf("Failed to create rabbitmq channel: %s\n", err.Error())
-		return make(<-chan amqp.Delivery), &amqp.Channel{}, err
+		return make(<-chan amqp.Delivery), &amqp.Connection{}, err
 	}
 	if err = channel.ExchangeDeclarePassive(
 		cfg.Exchange,
@@ -84,7 +74,7 @@ func connect(cfg *config.RabbitMQConfig) (<-chan amqp.Delivery, *amqp.Channel, e
 		nil,
 	); err != nil {
 		klog.Errorf("Failed to declare rabbitmq exchange: %s\n", err.Error())
-		return make(<-chan amqp.Delivery), &amqp.Channel{}, err
+		return make(<-chan amqp.Delivery), &amqp.Connection{}, err
 	}
 	queue, err := channel.QueueDeclare(
 		cfg.Queue,
@@ -96,11 +86,11 @@ func connect(cfg *config.RabbitMQConfig) (<-chan amqp.Delivery, *amqp.Channel, e
 	)
 	if err != nil {
 		klog.Errorf("Failed to declare queue: %s\n", err.Error())
-		return make(<-chan amqp.Delivery), &amqp.Channel{}, err
+		return make(<-chan amqp.Delivery), &amqp.Connection{}, err
 	}
 	if err = channel.QueueBind(queue.Name, cfg.RoutingKey, cfg.Exchange, false, nil); err != nil {
 		klog.Errorf("Failed to bind queue: %s\n", err.Error())
-		return make(<-chan amqp.Delivery), &amqp.Channel{}, err
+		return make(<-chan amqp.Delivery), &amqp.Connection{}, err
 	}
 	msgs, err := channel.Consume(
 		cfg.Queue,
@@ -114,5 +104,5 @@ func connect(cfg *config.RabbitMQConfig) (<-chan amqp.Delivery, *amqp.Channel, e
 	if err != nil {
 		klog.Errorf("Failed to create msg: %s\n", err.Error())
 	}
-	return msgs, channel, err
+	return msgs, conn, err
 }
