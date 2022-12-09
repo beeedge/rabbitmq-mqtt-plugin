@@ -12,6 +12,6 @@ RUN apk update \
     rm -rf /tmp/* && \
     rm -rf /var/log/*
 
-ADD rabbitmq-mqtt-plugin /usr/local/bin
+ADD _output/linux/amd64/rabbitmq-mqtt-plugin /usr/local/bin
 
 ENTRYPOINT ["/usr/local/bin/rabbitmq-mqtt-plugin"]
